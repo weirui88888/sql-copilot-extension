@@ -4,6 +4,7 @@ import './content.css'
 class SQLCopilotContent {
   private panel: HTMLDivElement | null = null
   private isVisible = false
+  private messageContainer: HTMLDivElement | null = null
 
   constructor() {
     this.init()
@@ -15,14 +16,76 @@ class SQLCopilotContent {
       if (request.action === 'insertSQL') {
         this.insertSQLToPage(request.sql)
         sendResponse({ success: true })
+        return true // 保持消息通道开放
       }
     })
 
     // 创建浮动面板
     this.createFloatingPanel()
 
+    // 创建消息容器
+    this.createMessageContainer()
+
     // 添加键盘快捷键
     this.addKeyboardShortcuts()
+  }
+
+  private createMessageContainer() {
+    this.messageContainer = document.createElement('div')
+    this.messageContainer.id = 'sql-copilot-messages'
+    this.messageContainer.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      width: 300px;
+      pointer-events: none;
+    `
+    document.body.appendChild(this.messageContainer)
+  }
+
+  private showMessage(message: string, type: 'success' | 'error' = 'success') {
+    if (!this.messageContainer) return
+
+    const messageElement = document.createElement('div')
+    const backgroundColor = type === 'success' ? '#4caf50' : '#f44336'
+    
+    messageElement.style.cssText = `
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      color: white;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transform: translateX(100%);
+      opacity: 0;
+      transition: all 0.3s ease-in-out;
+      pointer-events: auto;
+      background: ${backgroundColor};
+    `
+
+    messageElement.textContent = message
+
+    this.messageContainer.appendChild(messageElement)
+
+    // 触发重排后执行动画
+    setTimeout(() => {
+      messageElement.style.transform = 'translateX(0)'
+      messageElement.style.opacity = '1'
+    }, 10)
+
+    // 3秒后自动移除消息
+    setTimeout(() => {
+      messageElement.style.transform = 'translateX(100%)'
+      messageElement.style.opacity = '0'
+      
+      // 动画结束后移除元素
+      setTimeout(() => {
+        if (messageElement.parentNode === this.messageContainer) {
+          this.messageContainer!.removeChild(messageElement)
+        }
+      }, 300)
+    }, 3000)
   }
 
   private createFloatingPanel() {
@@ -152,7 +215,7 @@ class SQLCopilotContent {
       this.showResult(sql)
     } catch (error) {
       console.error('生成SQL失败:', error)
-      alert('生成SQL失败，请重试')
+      this.showMessage('生成SQL失败，请重试', 'error')
     }
   }
 
@@ -197,7 +260,7 @@ class SQLCopilotContent {
     const sqlDiv = this.panel.querySelector('.sql-copilot-sql') as HTMLDivElement
     if (sqlDiv) {
       navigator.clipboard.writeText(sqlDiv.textContent || '')
-      alert('SQL已复制到剪贴板')
+      this.showMessage('已复制到剪贴板', 'success')
     }
   }
 
@@ -231,10 +294,10 @@ class SQLCopilotContent {
         // 尝试自动执行
         this.autoExecuteSQL(targetInput)
 
-        alert('SQL已插入到页面')
+        this.showMessage('已插入到页面中', 'success')
       }
     } else {
-      alert('未找到SQL输入框')
+      this.showMessage('未找到输入框', 'error')
     }
   }
 

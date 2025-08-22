@@ -16,6 +16,7 @@ const Popup: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [hasConfig, setHasConfig] = useState(false)
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null)
 
   // 保存和恢复对话历史
   useEffect(() => {
@@ -59,6 +60,15 @@ const Popup: React.FC = () => {
     } catch (error) {
       console.error('检查配置失败:', error)
     }
+  }
+
+  // 显示通知
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({message, type})
+    // 3秒后自动隐藏通知
+    setTimeout(() => {
+      setNotification(null)
+    }, 3000)
   }
 
   const handleSendMessage = async () => {
@@ -158,6 +168,7 @@ const Popup: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
+    showNotification('已复制到剪贴板')
   }
 
   const insertToPage = (text: string) => {
@@ -170,6 +181,8 @@ const Popup: React.FC = () => {
         })
       }
     })
+    // 立即显示通知，无需等待响应
+    showNotification('已插入到页面中')
   }
 
   // 清除对话历史
@@ -311,6 +324,15 @@ const Popup: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Notification */}
+      {notification && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 10000 }}>
+          <div className={`px-4 py-2 rounded-lg text-sm font-medium text-white text-center max-w-xs pointer-events-auto ${notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+            {notification.message}
+          </div>
+        </div>
+      )}
 
       {/* Input with glassmorphism */}
       <div className="p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200/50">
