@@ -1,13 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "SQL Copilot",
+  "name": "AI 翻译助手",
   "version": "1.0.0",
-  "description": "AI驱动的SQL助手，帮助生成和执行SQL查询",
+  "description": "AI驱动的翻译助手，支持多种语言翻译",
   "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "<all_urls>",
+    "https://dashscope.aliyuncs.com/*"
+  ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "SQL Copilot"
+    "default_title": "AI 翻译助手"
   },
   "content_scripts": [
     {

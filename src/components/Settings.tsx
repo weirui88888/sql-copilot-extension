@@ -1,12 +1,26 @@
 import React, { useState, useEffect } from 'react'
 import { APIConfig, APIManager } from '../config/api'
-import { XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 
 interface SettingsProps {
   isOpen: boolean
   onClose: () => void
   onConfigSaved?: () => void
 }
+
+// 支持的语言列表
+const LANGUAGES = [
+  { value: 'Chinese', label: '中文' },
+  { value: 'English', label: '英语' },
+  { value: 'Japanese', label: '日语' },
+  { value: 'Korean', label: '韩语' },
+  { value: 'French', label: '法语' },
+  { value: 'Spanish', label: '西班牙语' },
+  { value: 'German', label: '德语' },
+  { value: 'Russian', label: '俄语' },
+  { value: 'Arabic', label: '阿拉伯语' },
+  { value: 'Portuguese', label: '葡萄牙语' }
+]
 
 const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) => {
   const [config, setConfig] = useState<APIConfig>({
@@ -17,11 +31,14 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
     maxTokens: 500,
     temperature: 0.3,
     requestMethod: 'GET',
-    promptParamKey: 'q'
+    promptParamKey: 'q',
+    sourceLang: 'Chinese',
+    targetLang: 'English'
   })
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [skipValidation, setSkipValidation] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)  // 用于控制API密钥显示/隐藏
 
   useEffect(() => {
     if (isOpen) {
@@ -41,7 +58,9 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
           maxTokens: savedConfig.maxTokens ?? 500,
           temperature: savedConfig.temperature ?? 0.3,
           requestMethod: (savedConfig.requestMethod as 'GET' | 'POST') || 'GET',
-          promptParamKey: savedConfig.promptParamKey || 'q'
+          promptParamKey: savedConfig.promptParamKey || 'q',
+          sourceLang: savedConfig.sourceLang || 'Chinese',
+          targetLang: savedConfig.targetLang || 'English'
         })
       }
     } catch (error) {
@@ -54,6 +73,15 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
     if (provider === 'custom') {
       if (!config.endpoint) {
         setMessage('请填写API端点')
+        return
+      }
+    } else if (provider === 'aliyun') {
+      if (!config.apiKey) {
+        setMessage('请填写API密钥')
+        return
+      }
+      if (!config.sourceLang || !config.targetLang) {
+        setMessage('请选择源语言和目标语言')
         return
       }
     } else {
@@ -71,7 +99,13 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
       const method = (config.requestMethod || 'GET') as 'GET' | 'POST'
       const promptKey = (config.promptParamKey || '').trim() || (method === 'GET' ? 'q' : 'prompt')
 
-      const normalized = { ...config, requestMethod: method, promptParamKey: promptKey }
+      const normalized = { 
+        ...config, 
+        requestMethod: method, 
+        promptParamKey: promptKey,
+        sourceLang: config.sourceLang || 'Chinese',
+        targetLang: config.targetLang || 'English'
+      }
       await APIManager.getInstance().setConfig(normalized)
 
       if (skipValidation) {
@@ -104,6 +138,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
   if (!isOpen) return null
 
   const isCustom = (config.provider || 'custom') === 'custom'
+  const isAliyun = (config.provider || 'custom') === 'aliyun'
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 transition-all duration-200 opacity-100">
@@ -125,36 +160,100 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
         </div>
 
         <div className="space-y-5">
-          {/* 模式提示（公司内部API） */}
+          {/* 模式提示 */}
           {isCustom && (
             <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
               当前使用：公司内部自有API。端点必填，密钥可选。
             </div>
           )}
+          
+          {isAliyun && (
+            <div className="text-sm text-gray-600 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2">
+              当前使用：阿里云翻译服务。需要API密钥和语言配置。
+            </div>
+          )}
 
-          {/* API端点 */}
+          {/* Provider选择 */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3">API端点</label>
-            <input
-              type="text"
-              value={config.endpoint}
-              onChange={e => setConfig(prev => ({ ...prev, endpoint: e.target.value }))}
-              placeholder={config.endpoint ? config.endpoint : 'https://your-company-api.com/generate-sql'}
+            <label className="block text-sm font-semibold text-gray-700 mb-3">服务商</label>
+            <select
+              value={config.provider || 'custom'}
+              onChange={e => setConfig(prev => ({ ...prev, provider: e.target.value as any }))}
               className="w-full p-3 border border-gray-300/50 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
-            />
+            >
+              <option value="custom">自定义API</option>
+              <option value="aliyun">阿里云翻译</option>
+            </select>
           </div>
 
-          {/* API密钥（可选） */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3">API密钥（可选）</label>
-            <input
-              type="password"
-              value={config.apiKey}
-              onChange={e => setConfig(prev => ({ ...prev, apiKey: e.target.value }))}
-              placeholder="sk-..."
-              className="w-full p-3 border border-gray-300/50 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
-            />
-          </div>
+          {/* API端点或API密钥 */}
+          {(isCustom || isAliyun) && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                {isAliyun ? 'API密钥' : 'API端点'}
+              </label>
+              {isAliyun ? (
+                <div className="relative">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={config.apiKey}
+                    onChange={e => setConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                    placeholder="sk-..."
+                    className="w-full p-3 border border-gray-300/50 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200 pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showApiKey ? (
+                      <EyeSlashIcon className="w-5 h-5" />
+                    ) : (
+                      <EyeIcon className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={config.endpoint}
+                  onChange={e => setConfig(prev => ({ ...prev, endpoint: e.target.value }))}
+                  placeholder={config.endpoint ? config.endpoint : 'https://your-company-api.com/generate-sql'}
+                  className="w-full p-3 border border-gray-300/50 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+                />
+              )}
+            </div>
+          )}
+
+          {/* 阿里云翻译语言配置 */}
+          {isAliyun && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">源语言</label>
+                <select
+                  value={config.sourceLang || 'Chinese'}
+                  onChange={e => setConfig(prev => ({ ...prev, sourceLang: e.target.value }))}
+                  className="w-full p-3 border border-gray-300/50 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+                >
+                  {LANGUAGES.map(lang => (
+                    <option key={lang.value} value={lang.value}>{lang.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">目标语言</label>
+                <select
+                  value={config.targetLang || 'English'}
+                  onChange={e => setConfig(prev => ({ ...prev, targetLang: e.target.value }))}
+                  className="w-full p-3 border border-gray-300/50 rounded-xl bg-white/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+                >
+                  {LANGUAGES.map(lang => (
+                    <option key={lang.value} value={lang.value}>{lang.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* 自定义接口高级设置（仅 custom 显示） */}
           {isCustom && (
@@ -199,8 +298,8 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onConfigSaved }) =
             </label>
           </div>
 
-          {/* 仅当不是custom时显示第三方高级设置 */}
-          {!isCustom && (
+          {/* 仅当不是custom/aliyun时显示第三方高级设置 */}
+          {false && (
             <>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">模型</label>

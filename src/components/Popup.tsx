@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ChatBubbleLeftRightIcon, PaperAirplaneIcon, Cog6ToothIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import { ChatBubbleLeftRightIcon, PaperAirplaneIcon, Cog6ToothIcon, SparklesIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline'
 import Settings from './Settings'
 import { APIManager } from '../config/api'
 
@@ -16,6 +16,37 @@ const Popup: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [hasConfig, setHasConfig] = useState(false)
+
+  // 保存和恢复对话历史
+  useEffect(() => {
+    // 从 localStorage 恢复对话历史
+    const savedMessages = localStorage.getItem('translationMessages')
+    if (savedMessages) {
+      try {
+        const parsedMessages = JSON.parse(savedMessages)
+        // 将时间戳转换回 Date 对象
+        const messagesWithDates = parsedMessages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }))
+        setMessages(messagesWithDates)
+      } catch (e) {
+        console.error('Failed to parse saved messages', e)
+      }
+    }
+  }, [])
+
+  // 保存对话历史到 localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      // 将 Date 对象转换为时间戳进行存储
+      const messagesToSave = messages.map(msg => ({
+        ...msg,
+        timestamp: msg.timestamp.getTime()
+      }))
+      localStorage.setItem('translationMessages', JSON.stringify(messagesToSave))
+    }
+  }, [messages])
 
   useEffect(() => {
     checkConfig()
@@ -45,19 +76,18 @@ const Popup: React.FC = () => {
     setIsLoading(true)
 
     try {
-      // 这里调用你的AI API
-      const response = await callAIAPI(inputValue)
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: response,
-        timestamp: new Date()
-      }
-
-      setMessages(prev => [...prev, assistantMessage])
+      // 使用流式API调用
+      await callAIAPIStream(inputValue)
     } catch (error) {
       console.error('API调用失败:', error)
+      // 显示错误消息
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: `错误: ${error instanceof Error ? error.message : '未知错误'}`,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
     }
@@ -69,6 +99,54 @@ const Popup: React.FC = () => {
     } catch (error) {
       throw new Error(`API调用失败: ${error instanceof Error ? error.message : '未知错误'}`)
     }
+  }
+
+  // 流式处理API响应
+  const callAIAPIStream = async (prompt: string): Promise<string> => {
+    const config = await APIManager.getInstance().getConfig()
+    if (!config) {
+      throw new Error('API配置未设置')
+    }
+
+    const provider = config.provider || 'custom'
+    
+    return new Promise<string>(async (resolve, reject) => {
+      try {
+        let resultText = ''
+        
+        // 创建初始的assistant消息
+        const initialAssistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: '',
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, initialAssistantMessage])
+
+        // 处理流式数据块
+        const handleChunk = (chunk: string) => {
+          resultText += chunk
+          // 更新消息内容
+          setMessages(prev => {
+            const newMessages = [...prev]
+            const lastMessage = newMessages[newMessages.length - 1]
+            if (lastMessage && lastMessage.type === 'assistant') {
+              newMessages[newMessages.length - 1] = {
+                ...lastMessage,
+                content: resultText
+              }
+            }
+            return newMessages
+          })
+        }
+
+        // 调用相应的流式API
+        await APIManager.getInstance().callAPIStream(prompt, handleChunk)
+        resolve(resultText)
+      } catch (error) {
+        reject(error)
+      }
+    })
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -94,6 +172,12 @@ const Popup: React.FC = () => {
     })
   }
 
+  // 清除对话历史
+  const clearHistory = () => {
+    setMessages([])
+    localStorage.removeItem('translationMessages')
+  }
+
   return (
     <div className="flex flex-col h-full bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Header with gradient */}
@@ -105,16 +189,27 @@ const Popup: React.FC = () => {
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">SQL Copilot</h1>
-              <p className="text-xs text-blue-100">AI驱动的SQL助手</p>
+              <h1 className="text-xl font-bold">AI 翻译助手</h1>
+              <p className="text-xs text-blue-100">智能文本翻译工具</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition-all duration-200 backdrop-blur-sm"
-          >
-            <Cog6ToothIcon className="w-5 h-5" />
-          </button>
+          <div className="flex space-x-2">
+            {messages.length > 0 && (
+              <button
+                onClick={clearHistory}
+                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition-all duration-200 backdrop-blur-sm text-xs"
+                title="清除历史记录"
+              >
+                清除
+              </button>
+            )}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition-all duration-200 backdrop-blur-sm"
+            >
+              <Cog6ToothIcon className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -158,14 +253,14 @@ const Popup: React.FC = () => {
           <div className="text-center text-gray-500 mt-12">
             <div className="relative mb-6">
               <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 rounded-3xl flex items-center justify-center">
-                <ChatBubbleLeftRightIcon className="w-10 h-10 text-blue-500" />
+                <ArrowsRightLeftIcon className="w-10 h-10 text-blue-500" />
               </div>
               <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
                 <SparklesIcon className="w-3 h-3 text-white" />
               </div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">开始你的SQL之旅</h3>
-            <p className="text-sm text-gray-500 max-w-xs mx-auto">描述你需要的SQL查询，AI将为你生成相应的代码</p>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">开始你的翻译之旅</h3>
+            <p className="text-sm text-gray-500 max-w-xs mx-auto">输入需要翻译的文本，AI将为你生成翻译结果</p>
           </div>
         ) : (
           messages.map(message => (
@@ -224,7 +319,7 @@ const Popup: React.FC = () => {
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="描述你需要的SQL查询..."
+            placeholder="输入需要翻译的文本..."
             className="flex-1 p-3 border border-gray-300/50 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent bg-white/50 backdrop-blur-sm shadow-sm transition-all duration-200"
             rows={2}
           />
